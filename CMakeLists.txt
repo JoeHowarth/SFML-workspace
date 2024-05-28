@@ -12,7 +12,7 @@ FetchContent_MakeAvailable(SFML)
 
 add_executable(main src/main.cpp)
 target_link_libraries(main PRIVATE sfml-graphics)
-target_compile_features(main PRIVATE cxx_std_17)
+target_compile_features(main PRIVATE cxx_std_20)
 
 if(WIN32)
     add_custom_command(

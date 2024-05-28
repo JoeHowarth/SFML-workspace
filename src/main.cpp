@@ -15,43 +15,13 @@
 
 const float shipAcceleration = 0.1f;
 const float bulletVelocity = 5;
-enum AsteroidSize { SMALL, MEDIUM, BIG };
 
+LayeredDrawer drawer(1);
 long frame = 0;
 
-template <typename... Args>
-void print_frame(Args&&... args) {
-  if (frame % 60 != 0) {
-    return;
-  }
-  std::stringstream ss;
-  (ss << ...
-      << std::forward<Args>(
-             args));  // Fold expression to handle multiple arguments
-  std::cout << ss.str() << std::endl;
-}
-
-struct Asteroid;
-
-sf::ConvexShape makeShip();
-sf::ConvexShape makeBigAsteroid(sf::Vector2f position);
-sf::ConvexShape makeRandomAsteroid(sf::Vector2f position, AsteroidSize size);
-sf::ConvexShape makeBullet(sf::Vector2f position, float rotation);
-bool isPointInsideConvexPolygon(const sf::ConvexShape& polygon,
-                                const sf::Vector2f& P);
-void applyVelocityToObject(sf::ConvexShape& shape, const sf::Vector2f& velocity,
-                           const sf::Vector2f& viewSize);
-std::vector<Asteroid> generateAsteroids(int count, float minX, float maxX,
-                                        float minY, float maxY);
-
-struct Ship {
-  sf::ConvexShape shape;
-  sf::Vector2f velocity;
-
-  Ship() : velocity(0, 0) { this->shape = makeShip(); }
-};
-
 struct Asteroid {
+  enum AsteroidSize { SMALL, MEDIUM, BIG };
+
   uint id;
   sf::ConvexShape shape;
   sf::Vector2f velocity;
@@ -63,102 +33,51 @@ struct Asteroid {
   static inline int BIG_RADIUS = 100;
   static inline int NUM_POINTS = 8;
 
-  Asteroid(sf::Vector2f position, sf::Vector2f velocity, AsteroidSize size)
-      : id(NEXT_ID++), velocity(velocity), size(size) {
-    this->shape = makeRandomAsteroid(position, size);
-  }
+  Asteroid(sf::Vector2f position, sf::Vector2f velocity, AsteroidSize size);
 
-  bool isPointInsideAsteroid(const sf::Vector2f& P, sf::RenderWindow& window) {
-    sf::Vector2f center = this->shape.getPosition();
-    auto Pc = P - center;  // vector from center of asteroid to point
-    float mag = magnitude(Pc);
+  bool isPointInsideAsteroid(const sf::Vector2f& P, bool debug = true);
 
-    drawLine(window, center, P);
-    drawPoint(window, P);
-
-    if (mag > 150) {
-      return false;
-    }
-    float angle = std::atan2(Pc.y, Pc.x);
-    float angleIncrement = 2 * 3.14159265358979323846f / NUM_POINTS;
-    int preVertexInd = angle / angleIncrement;
-    int nextVertexInd = (preVertexInd + 1) % NUM_POINTS;
-    float t = angle - angleIncrement * preVertexInd;
-    auto preV = this->shape.getPoint(preVertexInd);
-    auto nextV = this->shape.getPoint(nextVertexInd);
-    auto onCurve = lerp(preV, nextV, t);
-    float r = magnitude(onCurve);
-
-    if (std::abs(std::atan2(onCurve.y, onCurve.x) - angle) > 0.1) {
-      std::cout << "OnCurve angle is off" << std::endl;
-      return false;
-    }
-
-    if (mag < r) {
-      std::cout << "Inside!" << std::endl;
-      return true;
-    }
-    std::cout << "Outside :(" << std::endl;
-    return false;
-  }
-
-  sf::ConvexShape makeRandomAsteroid(sf::Vector2f position, AsteroidSize size) {
-    sf::ConvexShape shape;
-    const float pi = 3.14159265358979323846f;
-    float angleIncrement = 2 * pi / NUM_POINTS;
-    shape.setPointCount(NUM_POINTS);
-
-    float radius;
-    switch (size) {
-      case SMALL:
-        radius = 20;
-        break;
-      case MEDIUM:
-        radius = 50;
-        break;
-      case BIG:
-        radius = 100;
-        break;
-    }
-    for (int i = 0; i < NUM_POINTS; ++i) {
-      float angle = i * angleIncrement;
-      float r = radius;  //+ randomFloat(-radius / 3, radius / 3);
-      float x = r * std::cos(angle);
-      float y = r * std::sin(angle);
-      shape.setPoint(i, {x, y});
-    }
-
-    shape.setFillColor(sf::Color::Black);
-    shape.setOutlineColor(sf::Color::White);
-    shape.setOutlineThickness(1);
-    shape.setPosition(position);
-
-    return shape;
-  }
+  sf::ConvexShape makeRandomAsteroid(sf::Vector2f position, AsteroidSize size);
 };
 
-std::ostream& operator<<(std::ostream& os, const Asteroid& asteroid) {
-  os << "Asteroid " << asteroid.id << " at " << asteroid.shape.getPosition()
-     << " with velocity " << asteroid.velocity;
-  return os;
-}
+struct Ship {
+  sf::ConvexShape shape;
+  sf::Vector2f velocity;
+
+  Ship();
+};
 
 struct Bullet {
   sf::ConvexShape shape;
   sf::Vector2f velocity;
   float range;
 
-  Bullet(sf::Vector2f pos, float rotation) : range(1000) {
-    this->shape = makeBullet(pos, rotation);
-    this->velocity = move_forward(rotation, bulletVelocity);
-  }
+  Bullet(sf::Vector2f pos, float rotation);
 };
+
+bool isPointInsideConvexPolygon(const sf::ConvexShape& polygon,
+                                const sf::Vector2f& P);
+void applyVelocityToObject(sf::ConvexShape& shape, const sf::Vector2f& velocity,
+                           const sf::Vector2f& viewSize);
+std::vector<Asteroid> generateAsteroids(int count, float minX, float maxX,
+                                        float minY, float maxY);
+bool isPointInsideRadialPolygon(const sf::Vector2f& P, sf::ConvexShape poly,
+                                float magLimit = 200, bool debug = false);
+float normalizeAngle(float angle);
+
+template <typename... Args>
+void print_frame(Args&&... args) {
+  if (frame % 60 != 0) {
+    return;
+  }
+  print(args...);
+}
 
 /*
  * MAIN
  */
 int main() {
-  auto window = sf::RenderWindow{{1920u, 1080u}, "CMake SFML Project"};
+  auto window = sf::RenderWindow{{1920u, 1080u}, "Asteroids"};
   window.setFramerateLimit(144);
   sf::Vector2u windowSize = window.getSize();
   sf::View view;
@@ -168,7 +87,7 @@ int main() {
   window.setView(view);
   sf::Vector2f viewSize = view.getSize();
 
-  TextDrawer textDrawer(view, "../../open-sans/OpenSans-Regular.ttf");
+  TextDrawer textDrawer("../../open-sans/OpenSans-Regular.ttf");
 
   Ship ship;
   std::vector<Asteroid> asteroids;
@@ -179,15 +98,39 @@ int main() {
   std::vector<Asteroid> asteroidsToAdd;
 
   int newRoundFrame = 0;
+  int resetFrame = -1;
+  int numAsteroids = 5;
+  bool debug = false;
 
   while (window.isOpen()) {
     window.clear(sf::Color::Black);
-    textDrawer.clear();
 
-    if (asteroids.size() == 0) {
+    if (resetFrame == frame) {
+      newRoundFrame = frame;
+      score = 0;
+      numAsteroids = 5;
+      asteroids.clear();
+    }
+    if (resetFrame > frame) {
+      sf::RectangleShape gameOverRect(sf::Vector2f(300, 110));
+      gameOverRect.setPosition({-150, -40});
+      gameOverRect.setFillColor({30, 30, 35, 240});
+      // gameOverRect.setOutlineColor(sf::Color(100, 100, 100));
+      // gameOverRect.setOutlineThickness(1);
+      drawer.draw(std::make_unique<sf::RectangleShape>(gameOverRect));
+
+      textDrawer.draw({.pos = vec(-100, -30), .size = 24}, "Game Over!");
+      textDrawer.draw({.pos = vec(-100, 0), .size = 24}, "Score: ", score);
+      textDrawer.draw({.pos = vec(-100, 30), .size = 24}, "Press R to restart");
+      if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
+        resetFrame = frame + 1;
+      }
+    } else if (asteroids.size() == 0) {
       if (newRoundFrame == frame) {
-        asteroids = generateAsteroids(1, -viewSize.x / 2, viewSize.x / 2,
-                                      -viewSize.y / 2, viewSize.y / 2);
+        numAsteroids += 2;
+        asteroids =
+            generateAsteroids(numAsteroids, -viewSize.x / 2, viewSize.x / 2,
+                              -viewSize.y / 2, viewSize.y / 2);
         bullets.clear();
         ship.shape.setPosition(0, 0);
         ship.velocity = {0, 0};
@@ -212,17 +155,9 @@ int main() {
               bullets.push_back(
                   Bullet(ship.shape.getPosition(), ship.shape.getRotation()));
               break;
-            case sf::Keyboard::E:
-              if (asteroids[0].isPointInsideAsteroid(ship.shape.getPosition(),
-                                                     window)) {
-                textDrawer.draw(ship.shape.getPosition() + vec(20, 20),
-                                "Inside!");
-                dbg("Inside!");
-              } else {
-                dbg("Outside :(");
-                textDrawer.draw(ship.shape.getPosition() + vec(20, 20),
-                                "Outside :(");
-              }
+            case sf::Keyboard::Q:
+              debug = !debug;
+              break;
             default:
               break;
           }
@@ -232,6 +167,7 @@ int main() {
       }
     }
 
+    // Update the ship's velocity based on input
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
       ship.velocity += move_forward(ship.shape.getRotation(), shipAcceleration);
     } else if (std::abs(ship.velocity.x) > 0 || std::abs(ship.velocity.y) > 0) {
@@ -248,20 +184,53 @@ int main() {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
       ship.shape.rotate(2);
     }
+    // Debugging key to check if the ship is inside an asteroid
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::E)) {
+      if (asteroids[0].isPointInsideAsteroid(ship.shape.getPosition()), true) {
+        textDrawer.draw(ship.shape.getPosition() + vec(20, 20), "Inside!");
+      } else {
+        textDrawer.draw(ship.shape.getPosition() + vec(20, 20), "Outside :(");
+      }
+    }
 
     // Wrap Objects around the screen
     for (auto& asteroid : asteroids) {
       applyVelocityToObject(asteroid.shape, asteroid.velocity, viewSize);
     }
+
     applyVelocityToObject(ship.shape, ship.velocity, viewSize);
+
     for (int i = 0; i < bullets.size(); ++i) {
       auto& bullet = bullets[i];
       applyVelocityToObject(bullet.shape, bullet.velocity, viewSize);
+
+      // Update bullet range
       bullet.range -= magnitude(bullet.velocity);
-      print_frame("Bullet Range: ", bullet.range);
       if (bullet.range <= 0) {
-        print("Bullet out of range");
         bulletsToRemove.push_back(i);
+      }
+    }
+
+    // Detect collision between ship and asteroids
+    if (resetFrame < frame) {
+      bool shouldReset = false;
+      for (int i = 0; i < asteroids.size(); ++i) {
+        auto& asteroid = asteroids[i];
+        for (int j = 0; j < 3; ++j) {
+          auto pt = ship.shape.getPoint(j);
+          pt = ship.shape.getTransform().transformPoint(pt);
+          if (isPointInsideRadialPolygon(pt, asteroid.shape,
+                                         Asteroid::BIG_RADIUS * 2, debug)) {
+            shouldReset = true;
+            break;
+          }
+        }
+      }
+      // Reset the game if the ship is hit by an asteroid
+      if (shouldReset) {
+        print("Ship hit by asteroid!");
+        bullets.clear();
+        resetFrame = frame + 300;
       }
     }
 
@@ -275,29 +244,28 @@ int main() {
         auto& asteroid = asteroids[j];
         print_frame("Checking Asteroid ", asteroid);
 
-        if (isPointInsideConvexPolygon(asteroid.shape,
-                                       bullet.shape.getPosition())) {
+        if (asteroid.isPointInsideAsteroid(bullet.shape.getPosition(), debug)) {
           print("Hit!");
           switch (asteroid.size) {
-            case BIG:
-              score += 25;
-              // asteroidsToAdd.push_back(Asteroid(
-              //     asteroid.shape.getPosition() + randomVector2f(-5, 5, -5,
-              //     5), randomVector2f(-1, 1, -1, 1), MEDIUM));
-              // asteroidsToAdd.push_back(Asteroid(
-              //     asteroid.shape.getPosition() + randomVector2f(-5, 5, -5,
-              //     5), randomVector2f(-1, 1, -1, 1), MEDIUM));
+            case Asteroid::BIG:
+              score += 20;
+              asteroidsToAdd.push_back(Asteroid(
+                  asteroid.shape.getPosition() + randomVector2f(-5, 5, -5, 5),
+                  asteroid.velocity + randomVector2f(-1, 1, -1, 1), Asteroid::MEDIUM));
+              asteroidsToAdd.push_back(Asteroid(
+                  asteroid.shape.getPosition() + randomVector2f(-5, 5, -5, 5),
+                  asteroid.velocity + randomVector2f(-1, 1, -1, 1), Asteroid::MEDIUM));
               break;
-            case MEDIUM:
+            case Asteroid::MEDIUM:
               score += 50;
-              // asteroidsToAdd.push_back(Asteroid(
-              //     asteroid.shape.getPosition() + randomVector2f(-1, 1, -1,
-              //     1), randomVector2f(-1, 1, -1, 1), SMALL));
-              // asteroidsToAdd.push_back(Asteroid(
-              //     asteroid.shape.getPosition() + randomVector2f(-2, 2, -2,
-              //     2), randomVector2f(-1, 1, -1, 1), SMALL));
+              asteroidsToAdd.push_back(Asteroid(
+                  asteroid.shape.getPosition() + randomVector2f(-1, 1, -1, 1),
+                  asteroid.velocity + randomVector2f(-1, 1, -1, 1), Asteroid::SMALL));
+              asteroidsToAdd.push_back(Asteroid(
+                  asteroid.shape.getPosition() + randomVector2f(-2, 2, -2, 2),
+                  asteroid.velocity + randomVector2f(-1, 1, -1, 1), Asteroid::SMALL));
               break;
-            case SMALL:
+            case Asteroid::SMALL:
               score += 100;
               break;
           }
@@ -316,15 +284,12 @@ int main() {
     std::sort(asteroidsToRemove.rbegin(), asteroidsToRemove.rend());
 
     for (int i : bulletsToRemove) {
-      print("Removing bullet");
       bullets.erase(bullets.begin() + i);
     }
     for (int i : asteroidsToRemove) {
-      print("Removing asteroid");
       asteroids.erase(asteroids.begin() + i);
     }
     if (asteroidsToAdd.size() > 0) {
-      print("Adding ", asteroidsToAdd.size(), " asteroids");
       asteroids.insert(asteroids.end(),
                        std::make_move_iterator(asteroidsToAdd.begin()),
                        std::make_move_iterator(asteroidsToAdd.end()));
@@ -349,15 +314,15 @@ int main() {
       print_frame(asteroid);
       window.draw(asteroid.shape);
 
-      textDrawer.draw(asteroid.shape.getPosition(), "ID: ", asteroid.id,
-                      " Pos: ", asteroid.shape.getPosition());
+      if (debug) {
+        textDrawer.draw(asteroid.shape.getPosition(), "ID: ", asteroid.id,
+                        " Pos: ", asteroid.shape.getPosition());
+      }
     }
     print_frame("");
 
     // Draw Ship
     window.draw(ship.shape);
-    textDrawer.draw(ship.shape.getPosition(), "Pos: ", ship.shape.getPosition(),
-                    "\nVel: ", ship.velocity);
 
     // Draw score
     sf::RectangleShape scoreRect(sf::Vector2f(200, 50));
@@ -368,69 +333,15 @@ int main() {
     window.draw(scoreRect);
 
     textDrawer.draw(scoreRect.getPosition() + vec(75, 20), "Score: ", score);
-    textDrawer.draw(scoreRect.getPosition() + vec(75, 30), "Frame: ", frame);
-    textDrawer.draw(scoreRect.getPosition() + vec(75, 40),
-                    "NewRoundFrame: ", newRoundFrame);
 
+    drawer.display(window);
     textDrawer.display(window);
     window.display();
     ++frame;
   }
 }
 
-// Function to check if the point P is inside the convex polygon defined by a
-// sf::ConvexShape
-bool isPointInsideConvexPolygon(const sf::ConvexShape& polygon,
-                                const sf::Vector2f& P) {
-  int n = polygon.getPointCount();
-  if (n < 3) return false;  // A polygon must have at least 3 vertices
-
-  auto& trans = polygon.getTransform();
-
-  sf::Vector2f prevVertex = trans.transformPoint(polygon.getPoint(n - 1));
-  sf::Vector2f firstVertex = trans.transformPoint(polygon.getPoint(0));
-  bool initialSign =
-      crossProduct(firstVertex - prevVertex, P - prevVertex) >= 0;
-
-  for (int i = 0; i < n; ++i) {
-    sf::Vector2f currentVertex = trans.transformPoint(polygon.getPoint(i));
-    sf::Vector2f nextVertex =
-        trans.transformPoint(polygon.getPoint((i + 1) % n));
-    if (crossProduct(nextVertex - currentVertex, P - currentVertex) >= 0 !=
-        initialSign) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-sf::ConvexShape makeShip() {
-  sf::ConvexShape ship;
-  ship.setPointCount(3);
-  ship.setPoint(0, sf::Vector2f(0, -10));
-  ship.setPoint(1, sf::Vector2f(7, 10));
-  ship.setPoint(2, sf::Vector2f(-7, 10));
-  ship.setFillColor(sf::Color::Black);
-  ship.setOutlineColor(sf::Color::White);
-  ship.setOutlineThickness(1);
-
-  return ship;
-}
-
-sf::ConvexShape makeBullet(sf::Vector2f position, float rotation) {
-  sf::ConvexShape bullet;
-  bullet.setPointCount(4);
-  bullet.setPoint(0, sf::Vector2f(0, 0));
-  bullet.setPoint(1, sf::Vector2f(2, 0));
-  bullet.setPoint(2, sf::Vector2f(2, 4));
-  bullet.setPoint(3, sf::Vector2f(0, 4));
-  bullet.setFillColor(sf::Color::White);
-  bullet.setPosition(position.x, position.y);
-  bullet.setRotation(rotation);
-  return bullet;
-}
-
+// Moves the shape by the velocity and wraps it around the screen
 void applyVelocityToObject(sf::ConvexShape& shape, const sf::Vector2f& velocity,
                            const sf::Vector2f& viewSize) {
   shape.move(velocity);
@@ -456,14 +367,197 @@ void applyVelocityToObject(sf::ConvexShape& shape, const sf::Vector2f& velocity,
   }
 }
 
+// Generates count number of asteroids with random positions and velocities
 std::vector<Asteroid> generateAsteroids(int count, float minX, float maxX,
                                         float minY, float maxY) {
   std::vector<Asteroid> asteroids;
   for (int i = 0; i < count; ++i) {
-    sf::Vector2f position = randomVector2f(minX, maxX, minY, maxY);
-    std::cout << "Asteroid Position: " << position.x << ", " << position.y
-              << std::endl;
-    asteroids.push_back(Asteroid(position, randomVector2f(-1, 1, -1, 1), BIG));
+    auto pos = vec(0, 0);
+    // ensure the asteroid is not too close to the ship
+    while (magnitude(pos) < 200) {
+      pos = randomVector2f(minX, maxX, minY, maxY);
+    }
+    asteroids.emplace_back(pos, randomVector2f(-1, 1, -1, 1), Asteroid::BIG);
   }
   return asteroids;
+}
+
+// Function to normalize an angle to the range [0, 2 * pi)
+float normalizeAngle(float angle) {
+  std::fmod(angle, 2 * M_PI);
+  if (angle < 0) {
+    angle += 2 * M_PI;
+  }
+  return angle;
+}
+
+// Function to check if the point P is inside the regular radial polygon
+// Note: all vertices must have equal angles between them
+bool isPointInsideRadialPolygon(const sf::Vector2f& P, sf::ConvexShape poly,
+                                float magLimit, bool debug) {
+  if (poly.getPointCount() < 3) {
+    return false;
+  }
+  auto center = poly.getPosition();
+  auto Pc = P - center;  // vector from center of poly to point
+  float Pc_mag = magnitude(Pc);
+
+  if (Pc_mag > magLimit) {
+    return false;
+  }
+
+  if (debug) {
+    drawer.line(center, P);
+    drawer.point(P);
+  }
+
+  float Pc_angle = normalizeAngle(std::atan2(Pc.y, Pc.x));
+  float angleIncrement = 2 * M_PI / poly.getPointCount();
+  int preVertexInd = Pc_angle / angleIncrement;
+  int nextVertexInd = (preVertexInd + 1) % poly.getPointCount();
+  float t = (Pc_angle - angleIncrement * preVertexInd) / angleIncrement;
+  auto transform = poly.getTransform();
+  auto preV = transform.transformPoint(poly.getPoint(preVertexInd));
+  auto nextV = transform.transformPoint(poly.getPoint(nextVertexInd));
+  auto onCurve = lerp(preV, nextV, t) - center;
+  float r = magnitude(onCurve);
+
+  if (debug) {
+    drawer.line(center, center + onCurve);
+    drawer.point(center + onCurve);
+    drawer.point(preV);
+    drawer.point(nextV);
+  }
+
+  return Pc_mag < r;
+}
+
+// Function to check if the point P is inside the convex polygon
+// Note: not all polygons in ConvexShape are actually convex, but all are radial
+bool isPointInsideConvexPolygon(const sf::Vector2f& P,
+                                const sf::ConvexShape& polygon,
+                                float magLimit = 200) {
+  int n = polygon.getPointCount();
+  if (n < 3) return false;  // A polygon must have at least 3 vertices
+
+  if (magLimit > 0 && magnitude(P - polygon.getPosition()) > magLimit) {
+    return false;
+  }
+
+  auto& trans = polygon.getTransform();
+
+  sf::Vector2f prevVertex = trans.transformPoint(polygon.getPoint(n - 1));
+  sf::Vector2f firstVertex = trans.transformPoint(polygon.getPoint(0));
+  bool initialSign =
+      crossProduct(firstVertex - prevVertex, P - prevVertex) >= 0;
+
+  for (int i = 0; i < n; ++i) {
+    sf::Vector2f currentVertex = trans.transformPoint(polygon.getPoint(i));
+    sf::Vector2f nextVertex =
+        trans.transformPoint(polygon.getPoint((i + 1) % n));
+    if (crossProduct(nextVertex - currentVertex, P - currentVertex) >= 0 !=
+        initialSign) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**** Asteroid Impl ****/
+
+Asteroid::Asteroid(sf::Vector2f position, sf::Vector2f velocity,
+                   AsteroidSize size)
+    : id(NEXT_ID++), velocity(velocity), size(size) {
+  this->shape = makeRandomAsteroid(position, size);
+}
+
+bool Asteroid::isPointInsideAsteroid(const sf::Vector2f& P, bool debug) {
+  return isPointInsideRadialPolygon(P, this->shape, BIG_RADIUS * 2, debug);
+}
+
+sf::ConvexShape Asteroid::makeRandomAsteroid(sf::Vector2f position,
+                                             AsteroidSize size) {
+  sf::ConvexShape shape;
+  const float pi = 3.14159265358979323846f;
+  float angleIncrement = 2 * pi / NUM_POINTS;
+  shape.setPointCount(NUM_POINTS);
+
+  float radius;
+  switch (size) {
+    case SMALL:
+      radius = 20;
+      break;
+    case MEDIUM:
+      radius = 50;
+      break;
+    case BIG:
+      radius = 100;
+      break;
+  }
+  for (int i = 0; i < NUM_POINTS; ++i) {
+    float angle = i * angleIncrement;
+    float r = radius + randomFloat(-radius / 3, radius / 3);
+    float x = r * std::cos(angle);
+    float y = r * std::sin(angle);
+    shape.setPoint(i, {x, y});
+  }
+
+  shape.setFillColor(sf::Color::Black);
+  shape.setOutlineColor(sf::Color::White);
+  shape.setOutlineThickness(1);
+  shape.setPosition(position);
+
+  return shape;
+}
+
+std::ostream& operator<<(std::ostream& os, const Asteroid& asteroid) {
+  os << "Asteroid " << asteroid.id << " at " << asteroid.shape.getPosition()
+     << " with velocity " << asteroid.velocity;
+  return os;
+}
+
+/**** Ship Impl ****/
+
+Ship::Ship() : velocity(0, 0) {
+  this->shape.setPointCount(3);
+  this->shape.setPoint(0, sf::Vector2f(0, -10));
+  this->shape.setPoint(1, sf::Vector2f(7, 10));
+  this->shape.setPoint(2, sf::Vector2f(-7, 10));
+  this->shape.setFillColor(sf::Color::Black);
+  this->shape.setOutlineColor(sf::Color::White);
+  this->shape.setOutlineThickness(1);
+}
+
+/**** Bullet Impl ****/
+
+Bullet::Bullet(sf::Vector2f pos, float rotation) : range(1000) {
+  this->shape.setPointCount(4);
+  this->shape.setPoint(0, {0, 0});
+  this->shape.setPoint(1, {2, 0});
+  this->shape.setPoint(2, {2, 4});
+  this->shape.setPoint(3, {0, 4});
+  this->shape.setFillColor(sf::Color::White);
+  this->shape.setPosition(pos.x, pos.y);
+  this->shape.setRotation(rotation);
+
+  this->velocity = move_forward(rotation, bulletVelocity);
+}
+
+/**** Misc Drawing Functions ****/
+
+sf::ConvexShape makeAlienShip() {
+  sf::ConvexShape alienShip;
+  alienShip.setPointCount(6);
+  alienShip.setPoint(0, sf::Vector2f(-20, -10));
+  alienShip.setPoint(1, sf::Vector2f(20, -10));
+  alienShip.setPoint(2, sf::Vector2f(10, 0));
+  alienShip.setPoint(3, sf::Vector2f(20, 10));
+  alienShip.setPoint(4, sf::Vector2f(-20, 10));
+  alienShip.setPoint(5, sf::Vector2f(-10, 0));
+  alienShip.setFillColor(sf::Color::Black);
+  alienShip.setOutlineColor(sf::Color::White);
+  alienShip.setOutlineThickness(1);
+
+  return alienShip;
 }
